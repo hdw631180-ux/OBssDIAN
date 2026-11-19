@@ -123,6 +123,7 @@ body.winmode .win::after,#dock::after{content:"";position:absolute;inset:0;borde
 .st button{background:linear-gradient(180deg,color-mix(in srgb,var(--ac) 85%,#fff),var(--ac));box-shadow:inset 0 1px 0 #ffffff80,0 4px 12px color-mix(in srgb,var(--ac) 40%,transparent)}
 .st button.rm{background:linear-gradient(180deg,#ffffff2e,#ffffff14);box-shadow:inset 0 1px 0 #ffffff4d}
 #bar .b.syn{border-color:var(--ac);color:var(--ac)}
+#snd.off{opacity:.4;text-decoration:line-through}
 #dsk{display:none;position:absolute;left:14px;top:44px;z-index:1}
 body.winmode #dsk{display:block}
 .di{width:88px;text-align:center;color:#fff;font:12px system-ui;cursor:pointer;padding:8px 4px;border-radius:14px;text-shadow:0 1px 4px #000}
@@ -141,6 +142,7 @@ body.dragging iframe{pointer-events:none}
     <button class="b" data-sp="wiki">wiki</button>
     <button class="b hide" data-sp="btop">btop</button>
     <button class="b syn" data-sp="syn">synapse</button>
+    <button class="b" id="snd" title="Son">♪</button>
     <button class="b" id="mode">Lumen</button>
     <span class="d" id="bat"></span>
     <span class="d hide" id="pk"></span>
@@ -199,6 +201,36 @@ const LOGO=`
    ██████████████████
    ██████████████████`.split('\n').slice(1);
 
+/* ---------- sons (Web Audio, rien à télécharger) ---------- */
+let AC=null,SND=true,Q=false;
+try{SND=localStorage.getItem('snd')!=='0'}catch(e){}
+const actx=()=>{if(!AC){try{AC=new(window.AudioContext||window.webkitAudioContext)()}catch(e){}}if(AC&&AC.state==='suspended')AC.resume();return AC};
+function tone(f,d=.1,type='sine',v=.06,at=0,slide=0){
+  if(!SND)return;const c=actx();if(!c)return;
+  const o=c.createOscillator(),g=c.createGain(),n=c.currentTime+at;
+  o.type=type;o.frequency.setValueAtTime(f,n);
+  if(slide)o.frequency.exponentialRampToValueAtTime(Math.max(30,f+slide),n+d);
+  g.gain.setValueAtTime(0,n);g.gain.linearRampToValueAtTime(v,n+.01);g.gain.exponentialRampToValueAtTime(.0001,n+d);
+  o.connect(g).connect(c.destination);o.start(n);o.stop(n+d+.02);
+}
+const SFX={
+  open:()=>{tone(420,.14,'sine',.06,0,260);tone(840,.12,'sine',.03,.04)},
+  close:()=>tone(520,.16,'sine',.05,0,-260),
+  min:()=>tone(600,.22,'triangle',.05,0,-420),
+  restore:()=>tone(240,.2,'triangle',.05,0,380),
+  max:()=>{tone(440,.08,'sine',.05);tone(660,.1,'sine',.05,.07)},
+  click:()=>tone(900,.04,'square',.02),
+  key:()=>tone(1400+Math.random()*300,.025,'square',.012),
+  err:()=>{tone(180,.18,'sawtooth',.05);tone(150,.2,'sawtooth',.05,.12)},
+  ok:()=>{tone(660,.1,'sine',.05);tone(990,.18,'sine',.05,.09)},
+  lc:()=>tone(500,.12,'sine',.04,0,200),
+  boot:()=>[392,523,659,784].forEach((f,i)=>tone(f,.55,'sine',.05,i*.14))
+};
+const sfx=k=>{if(Q)return;try{SFX[k]()}catch(e){}};
+const snd=v=>{SND=v;try{localStorage.setItem('snd',v?'1':'0')}catch(e){}const b=$('#snd');if(b)b.classList.toggle('off',!v);if(v)sfx('ok')};
+$('#snd').classList.toggle('off',!SND);$('#snd').onclick=()=>snd(!SND);
+['pointerdown','keydown'].forEach(ev=>addEventListener(ev,()=>actx(),{once:true,passive:true}));
+
 /* ---------- Lumen : marque, icônes, apps ---------- */
 const MARK='<svg class="mk" viewBox="0 0 32 32"><path d="M16 2l12 7v14l-12 7-12-7V9z" fill="none" stroke="url(#gm)" stroke-width="2.2" stroke-linejoin="round"/><path d="M21.5 9H11.5V23H21.5M11.5 16H19.5" fill="none" stroke="#ff3b47" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const APPS={term:{n:'Terminal',c:['#2dd4bf','#0f766e']},files:{n:'Fichiers',c:['#fbbf24','#d97706']},store:{n:'Pacstore',c:['#60a5fa','#2563eb']},btop:{n:'Moniteur',c:['#f472b6','#be185d']},wiki:{n:'Wiki',c:['#a78bfa','#6d28d9']},set:{n:'Réglages',c:['#94a3b8','#475569']},syn:{n:'Synapse',c:['#52525b','#09090b']}};
@@ -214,7 +246,7 @@ const WPS={aurora:'radial-gradient(60% 55% at 18% 15%,#e5383b55,transparent),rad
   forest:'radial-gradient(60% 60% at 25% 25%,#22c55e44,transparent),radial-gradient(60% 60% at 80% 80%,#0ea5a455,transparent),linear-gradient(160deg,#04120d,#0a1f1a)',
   graphite:'linear-gradient(160deg,#0d0f14,#1c212b)'};
 const setWp=k=>document.documentElement.style.setProperty('--wp',WPS[k]);setWp('aurora');
-function toast(m){const d=document.createElement('div');d.className='toast';d.textContent=m;document.body.append(d);setTimeout(()=>d.remove(),2400)}
+function toast(m){sfx('ok');const d=document.createElement('div');d.className='toast';d.textContent=m;document.body.append(d);setTimeout(()=>d.remove(),2400)}
 function dock(){
   const all=ALL(),key=Object.keys(APPS).map(a=>all.some(w=>w.type===a)?1:0).join('');
   if(dock._k===key&&$('#dock').children.length)return;dock._k=key;
@@ -262,6 +294,7 @@ function mkSet(bd,w){
   setTitle(w,'Réglages');bd.className='bd app';
   bd.innerHTML=`<div class="st"><h2>Réglages</h2><h3>Couleur d'accent</h3><div class="sw">${Object.entries(ACC).map(([k,v])=>`<i data-a="${k}" style="background:${v}"></i>`).join('')}</div>
   <h3>Fond d'écran</h3><div class="sw">${Object.keys(WPS).map(k=>`<i data-w="${k}" style="background:${WPS[k]}"></i>`).join('')}</div>
+  <h3>Son</h3><button data-s>Activer / couper les sons</button>
   <h3>Environnement</h3><button data-m>Passer en tiling Arch</button>
   <h3>À propos</h3><p>${MARK} <b>Lumen</b> · bureau d'archweb<br><span class="d">Shell web écrit à la main, sans framework.</span></p></div>`;
   bd.onclick=e=>{
@@ -269,6 +302,7 @@ function mkSet(bd,w){
     if(a)document.documentElement.style.setProperty('--ac',ACC[a.dataset.a]);
     if(p)setWp(p.dataset.w);
     if(e.target.closest('[data-m]'))setMode('tile');
+    if(e.target.closest('[data-s]'))snd(!SND);
   };
 }
 
@@ -315,7 +349,7 @@ function tileWin(){
 function setTitle(w,t){w.title=t;w.el.querySelector('.tt').textContent=t;if(mode==='win')tile();else if(w===focus)$('#ttl').textContent=t}
 function closeWin(w){
   for(const l of WS){const i=l.indexOf(w);if(i>-1)l.splice(i,1)}
-  w.stop&&w.stop();focus=(mode==='win'?ALL().filter(x=>!x.min).at(-1):WS[cur][0])||null;
+  w.stop&&w.stop();sfx('close');focus=(mode==='win'?ALL().filter(x=>!x.min).at(-1):WS[cur][0])||null;
   if(mode==='win'&&w.el.style.display!=='none'){w.el.classList.add('closing');setTimeout(()=>w.el.remove(),230)}else w.el.remove();
   tile();
 }
@@ -348,7 +382,7 @@ function spawn(type){
   else if(type==='store')mkStore(bd,w);
   else if(type==='set')mkSet(bd,w);
   else if(type==='syn')mkSyn(bd,w);
-  tile();return w;
+  tile();sfx('open');return w;
 }
 
 /* ---------- btop factice ---------- */
@@ -388,12 +422,13 @@ function mkTerm(bd,w){
   bd.addEventListener('click',()=>{if(!getSelection().toString())inp.focus()});
   inp.addEventListener('keydown',async e=>{
     if(e.altKey)return;
+    if(e.key.length===1&&!e.ctrlKey&&!e.metaKey)sfx('key');
     if(e.key==='Enter'){
       if(t.busy)return;
       const line=inp.value;inp.value='';
       t.h(prompt()+esc(line));
       if(line.trim()){t.hist.push(line);t.hi=t.hist.length;t.busy=true;
-        try{await run(t,line)}catch(err){t.p('bash: '+err.message,'r')}
+        try{await run(t,line)}catch(err){sfx('err');t.p('bash: '+err.message,'r')}
         t.busy=false}
       refresh();inp.focus();
     }else if(e.key==='ArrowUp'){e.preventDefault();if(t.hi>0)inp.value=t.hist[--t.hi]}
@@ -419,7 +454,7 @@ async function run(t,line){
   const fn=C[cmd];
   if(fn){await fn(toks,t,root);return}
   if(BIN[cmd]&&inst.has(BIN[cmd])){t.p(cmd+': ce programme est simulé dans le navigateur.','d');return}
-  t.p(`bash: ${cmd}: command not found`);
+  sfx('err');t.p(`bash: ${cmd}: command not found`);
 }
 
 /* ---------- commandes ---------- */
@@ -427,7 +462,7 @@ const ASCII_COW=(s)=>{const l='_'.repeat(s.length+2),b='-'.repeat(s.length+2);
   return ` ${l}\n< ${s} >\n ${b}\n        \\   ^__^\n         \\  (oo)\\_______\n            (__)\\       )\\/\\\n                ||----w |\n                ||     ||`};
 Object.assign(C,{
   help(a,t){t.h(`<span class="a">Commandes :</span> help ls cd pwd cat echo mkdir touch rm clear whoami hostname uname date uptime
-neofetch pacman wiki btop theme synapse lumen arch exit
+neofetch pacman wiki btop theme sound synapse lumen arch exit
 <span class="a">Après pacman -S :</span> cowsay sl fortune htop btop vim git
 <span class="a">Clavier :</span> Alt+Entrée nouveau terminal · Alt+Shift+Q fermer · Alt+1..4 bureau · Alt+Shift+1..4 déplacer · Alt+J/K focus · Alt+W wiki · Alt+B btop · Alt+S Synapse · Alt+M Arch⇄Lumen · Alt+Espace lanceur`)},
   clear(a,t){t.clear()},
@@ -475,6 +510,7 @@ neofetch pacman wiki btop theme synapse lumen arch exit
   wiki(){spawn('wiki')},
   lumen(){setMode('win')},
   synapse(){spawn('syn')},
+  sound(a,t){const v=a[0]==='off'?false:a[0]==='on'?true:!SND;snd(v);t.p('son : '+(v?'activé':'coupé'))},
   arch(){setMode('tile')},
   btop(){if(inst.has('btop'))spawn('btop');else throw new Error('btop: command not found')},
   htop(){if(inst.has('htop'))spawn('btop');else throw new Error('htop: command not found')},
@@ -514,7 +550,7 @@ neofetch pacman wiki btop theme synapse lumen arch exit
         const d=document.createElement('div');t.h('');
         for(let i=0;i<=10;i++){await sleep(110);d.textContent=`(1/1) installing ${k}  [${'#'.repeat(i*2).padEnd(20,'-')}] ${i*10}%`;
           if(i===0)t.h('<span id="pgs"></span>');$('#pgs').textContent=d.textContent}
-        $('#pgs').removeAttribute('id');inst.add(k);$('#pk').textContent=inst.size+' pkgs';
+        $('#pgs').removeAttribute('id');inst.add(k);sfx('ok');$('#pk').textContent=inst.size+' pkgs';
       }
       return;
     }
@@ -564,8 +600,8 @@ addEventListener('keydown',()=>skip=true);$('#boot').addEventListener('click',()
   for(const l of L){B.innerHTML+=l+'\n';if(skip)break;await sleep(l?170:60)}
   await sleep(skip?0:400);
   B.remove();$('#desk').hidden=false;$('#pk').textContent=inst.size+' pkgs';
-  const t1=spawn('term');spawn('wiki');focus=WS[0][0];tile();
-  t1.term.inp.value='neofetch';t1.term.inp.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter'}));
+  Q=true;const t1=spawn('term');spawn('wiki');focus=WS[0][0];tile();
+  t1.term.inp.value='neofetch';t1.term.inp.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter'}));Q=false;sfx('boot');
   setTimeout(()=>t1.term.h('\n<span class="y">→ Synapse : clique le bouton « synapse » en haut, ou tape</span> <span class="a">synapse</span>\n<span class="y">→ Bureau avec dock et icône Synapse : bouton « Lumen » en haut</span>'),80);
 })();
 
@@ -590,13 +626,14 @@ $('#bar').addEventListener('click',e=>{
   if(s)spawn(s.dataset.sp);else if(w)switchWs(+w.dataset.ws);
 });
 function setMode(m){
-  mode=m;document.body.classList.toggle('winmode',m==='win');
+  sfx('lc');mode=m;document.body.classList.toggle('winmode',m==='win');
   ALL().forEach(w=>{w.init=false;w.min=false});
   closeLC();$('#mode').textContent=m==='win'?'Arch':'Lumen';
   if(!ALL().includes(focus)||(m==='tile'&&!WS[cur].includes(focus)))focus=(m==='win'?ALL().at(-1):WS[cur][0])||null;
   tile();
 }
 function minimize(w){
+  sfx('min');
   const fin=()=>{w.el.classList.remove('minimizing');w.min=true;focus=ALL().filter(x=>!x.min).at(-1)||null;tile()};
   const d=$(`#dock [data-app="${w.type}"]`);
   if(mode!=='win'||!d)return fin();
@@ -606,6 +643,7 @@ function minimize(w){
   w.el.classList.add('minimizing');setTimeout(fin,320);
 }
 function toggleMax(w){
+  sfx('max');
   w.el.classList.add('tr');setTimeout(()=>w.el.classList.remove('tr'),380);
   const s=w.el.style,a=$('#area');
   if(!w.max){w.prev=[s.left,s.top,s.width,s.height];Object.assign(s,{left:'0px',top:'0px',width:a.clientWidth+'px',height:a.clientHeight+'px'});w.max=true}
@@ -624,14 +662,14 @@ const bounce=k=>requestAnimationFrame(()=>{const d=$(`#dock [data-app="${k}"]`);
 const openApp=k=>{
   const w=ALL().filter(x=>x.type===k).at(-1);
   if(!w){spawn(k);bounce(k);return}
-  if(w.min){w.min=false;w._rs=1;focus=w}
+  if(w.min){w.min=false;w._rs=1;focus=w;sfx('restore')}
   else if(focus===w){minimize(w);return}
   else focus=w;
   w.z=++Z;tile();
 };
 const closeLC=()=>$('#lc').classList.remove('open');
 function fillLC(q){$('#lcg').innerHTML=Object.keys(APPS).filter(k=>APPS[k].n.toLowerCase().includes(q.toLowerCase())).map((k,i)=>`<div class="ap" style="animation-delay:${i*40}ms" data-app="${k}">${ico(k,60)}${APPS[k].n}</div>`).join('')}
-function openLC(){const l=$('#lc'),i=l.querySelector('input');l.classList.add('open');i.value='';fillLC('');i.focus()}
+function openLC(){sfx('lc');const l=$('#lc'),i=l.querySelector('input');l.classList.add('open');i.value='';fillLC('');i.focus()}
 $('#lc input').addEventListener('input',e=>fillLC(e.target.value));
 $('#lc input').addEventListener('keydown',e=>{if(e.key==='Enter'){const a=$('#lcg .ap');if(a){closeLC();openApp(a.dataset.app)}}});
 addEventListener('keydown',e=>{
@@ -640,6 +678,7 @@ addEventListener('keydown',e=>{
 });
 document.addEventListener('click',e=>{
   const t=e.target;
+  if(t.closest('#dock .dk,.ap,.di,#bar .b,#bar .w'))sfx('click');
   if(t.closest('#mode')){setMode(mode==='win'?'tile':'win');return}
   if(t.closest('[data-start],[data-lc]')){openLC();return}
   const a=t.closest('#dock [data-app],#lc [data-app],#dsk [data-app]');
